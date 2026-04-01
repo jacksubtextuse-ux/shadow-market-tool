@@ -1,0 +1,19 @@
+# Cache
+.cache/
+
+# Environment
+.env
+__pycache__/
+*.pyc
+
+# Debug/test output
+debug_last_report.xlsx
+test_*.xlsx
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

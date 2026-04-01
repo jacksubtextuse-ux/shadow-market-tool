@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shadow Market Analysis</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f5f7;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+      padding: 40px 48px;
+      width: 100%;
+      max-width: 560px;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 6px; color: #111; }
+    h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 12px; color: #111; }
+    .subtitle { font-size: 0.85rem; color: #666; margin-bottom: 28px; }
+    .info-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      font-size: 0.84rem;
+      color: #444;
+      line-height: 1.6;
+    }
+    .info-box strong { color: #111; }
+
+    .field { margin-bottom: 20px; }
+    label { display: block; font-size: 0.85rem; font-weight: 600;
+            color: #444; margin-bottom: 6px; }
+    .label-hint { font-weight: 400; color: #888; font-size: 0.8rem; }
+    select, input, textarea {
+      display: block; width: 100%; padding: 9px 12px;
+      border: 1px solid #d0d5dd; border-radius: 6px;
+      font-size: 0.9rem; background: #fff; color: #333;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 60px; }
+    select { cursor: pointer; }
+    select:focus, input:focus, textarea:focus { outline: 2px solid #1d4ed8; border-color: transparent; }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #1e40af; }
+    button:disabled { background: #93a3b8; cursor: not-allowed; }
+
+    .btn-secondary { background: #475569; }
+    .btn-secondary:hover { background: #334155; }
+    .btn-green { background: #16a34a; }
+    .btn-green:hover { background: #15803d; }
+    .btn-outline {
+      background: #fff; color: #1d4ed8; border: 1.5px solid #1d4ed8;
+    }
+    .btn-outline:hover { background: #eff6ff; }
+
+    .status {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: #555;
+      min-height: 20px;
+    }
+    .status.error { color: #dc2626; }
+    .status.success { color: #16a34a; }
+
+    .result-box {
+      display: none;
+      margin-top: 20px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 14px 16px;
+      font-size: 0.84rem;
+      color: #166534;
+      line-height: 1.6;
+    }
+
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+
+    /* Campus rows */
+    .campus-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: end; }
+    .campus-row input { flex: 1; }
+    .campus-row .remove-btn {
+      width: auto; padding: 9px 12px; background: #ef4444; border-radius: 6px;
+      font-size: 0.8rem; flex-shrink: 0;
+    }
+    .campus-row .remove-btn:hover { background: #dc2626; }
+
+    .add-link {
+      display: inline-block; font-size: 0.84rem; color: #1d4ed8;
+      cursor: pointer; font-weight: 600; margin-top: 4px;
+    }
+    .add-link:hover { text-decoration: underline; }
+
+    /* View toggle */
+    .view-toggle { margin-bottom: 24px; text-align: center; }
+    .view-toggle span {
+      display: inline-block; padding: 8px 20px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600; color: #666;
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+    }
+    .view-toggle span.active { color: #1d4ed8; border-color: #1d4ed8; }
+    .view-toggle span:hover { color: #1d4ed8; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Shadow Market Analysis</h1>
+    <p class="subtitle">Renter demographics by distance from campus</p>
+
+    <div class="view-toggle">
+      <span class="active" onclick="showView('run')">Run Report</span>
+      <span onclick="showView('setup')">+ New Market</span>
+    </div>
+
+    <!-- ============ RUN REPORT VIEW ============ -->
+    <div class="view active" id="view-run">
+      <div class="info-box" id="info-box">
+        <strong>Data:</strong> Census ACS 5-Year, Table B25007<br>
+        <strong>Geography:</strong> <span id="info-geo">Loading...</span><br>
+        <strong>Rings:</strong> <span id="info-rings">Loading...</span><br>
+        <strong>Metric:</strong> Renter-occupied units, householder age 15-24
+      </div>
+
+      <div class="field">
+        <label for="market">Market</label>
+        <select id="market" onchange="onMarketChange()">
+          <option value="">Loading markets...</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="year">ACS Vintage Year</label>
+        <select id="year"></select>
+      </div>
+
+      <button id="btn" onclick="generateReport()">Generate Report</button>
+      <div class="status" id="status"></div>
+      <div class="result-box" id="result"></div>
+    </div>
+
+    <!-- ============ NEW MARKET SETUP VIEW ============ -->
+    <div class="view" id="view-setup">
+      <div class="info-box">
+        <strong>How it works:</strong> Enter a market name, add campus center points (latitude/longitude),
+        and click Create. The tool automatically detects which counties fall within your distance rings
+        using the Census geocoder — no manual FIPS codes or Census URLs needed.
+      </div>
+
+      <div class="field">
+        <label>Market Name</label>
+        <input type="text" id="new-name" placeholder="e.g. Penn State University Park" />
+      </div>
+
+      <div class="field">
+        <label>Campus Center Points <span class="label-hint">— name, latitude, longitude</span></label>
+        <div id="campus-rows">
+          <div class="campus-row">
+            <input type="text" placeholder="Campus name" class="campus-name" />
+            <input type="text" placeholder="Lat" class="campus-lat" style="max-width:90px;" />
+            <input type="text" placeholder="Lon" class="campus-lon" style="max-width:100px;" />
+          </div>
+        </div>
+        <span class="add-link" onclick="addCampusRow()">+ Add another campus</span>
+      </div>
+
+      <div class="field">
+        <label>Distance Rings (miles) <span class="label-hint">— comma-separated</span></label>
+        <input type="text" id="new-rings" value="0.5, 1, 2" />
+      </div>
+
+      <div class="field">
+        <label>ACS Years <span class="label-hint">— comma-separated</span></label>
+        <input type="text" id="new-years" value="2022, 2023, 2024" />
+      </div>
+
+      <button class="btn-green" id="create-btn" onclick="createMarket()">Create Market</button>
+      <div class="status" id="setup-status"></div>
+    </div>
+  </div>
+
+  <script>
+    let marketsData = [];
+
+    // ---- View toggle ----
+    function showView(name) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.view-toggle span').forEach(s => s.classList.remove('active'));
+      document.getElementById('view-' + name).classList.add('active');
+      document.querySelectorAll('.view-toggle span').forEach(s => {
+        if ((name === 'run' && s.textContent === 'Run Report') ||
+            (name === 'setup' && s.textContent.includes('New Market')))
+          s.classList.add('active');
+      });
+    }
+
+    // ---- Dynamic form rows ----
+    function addCampusRow() {
+      const container = document.getElementById('campus-rows');
+      const div = document.createElement('div');
+      div.className = 'campus-row';
+      div.innerHTML =
+        '<input type="text" placeholder="Campus name" class="campus-name" />' +
+        '<input type="text" placeholder="Lat" class="campus-lat" style="max-width:90px;" />' +
+        '<input type="text" placeholder="Lon" class="campus-lon" style="max-width:100px;" />' +
+        '<button class="remove-btn" onclick="this.parentElement.remove()">X</button>';
+      container.appendChild(div);
+    }
+
+    // ---- Load existing markets ----
+    async function loadMarkets() {
+      try {
+        const resp = await fetch('/markets');
+        marketsData = await resp.json();
+        const sel = document.getElementById('market');
+        sel.innerHTML = '';
+        marketsData.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.short_name;
+          opt.textContent = m.name;
+          sel.appendChild(opt);
+        });
+        if (marketsData.length > 0) {
+          onMarketChange();
+        }
+      } catch (e) {
+        console.error('Failed to load markets', e);
+      }
+    }
+
+    function onMarketChange() {
+      const shortName = document.getElementById('market').value;
+      const m = marketsData.find(x => x.short_name === shortName);
+      if (!m) return;
+
+      document.getElementById('info-geo').textContent =
+        'Block groups in ' + m.county_names.map(c => c + ' County').join(' + ');
+      document.getElementById('info-rings').textContent =
+        m.ring_miles.map(r => r + ' mi').join(', ') +
+        ' from nearest campus (' + m.campuses.join(', ') + ')';
+
+      const yearSel = document.getElementById('year');
+      yearSel.innerHTML = '';
+      [...m.years].sort((a, b) => b - a).forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + ' (covers ' + (y - 4) + '\u2013' + y + ')';
+        yearSel.appendChild(opt);
+      });
+
+      // Add Master option
+      const firstYear = Math.min(...m.years);
+      const lastYear = Math.max(...m.years);
+      const masterOpt = document.createElement('option');
+      masterOpt.value = 'master';
+      masterOpt.textContent = 'Master (' + firstYear + '\u2013' + lastYear + ')';
+      yearSel.appendChild(masterOpt);
+    }
+
+    // ---- Create new market ----
+    async function createMarket() {
+      const btn = document.getElementById('create-btn');
+      const status = document.getElementById('setup-status');
+
+      const name = document.getElementById('new-name').value.trim();
+      if (!name) { status.className = 'status error'; status.textContent = 'Market name is required.'; return; }
+
+      // Collect campuses
+      const campuses = {};
+      const nameEls = document.querySelectorAll('.campus-name');
+      const latEls = document.querySelectorAll('.campus-lat');
+      const lonEls = document.querySelectorAll('.campus-lon');
+      for (let i = 0; i < nameEls.length; i++) {
+        const cn = nameEls[i].value.trim();
+        const lat = parseFloat(latEls[i].value.trim());
+        const lon = parseFloat(lonEls[i].value.trim());
+        if (cn && !isNaN(lat) && !isNaN(lon)) {
+          campuses[cn] = [lat, lon];
+        }
+      }
+      if (Object.keys(campuses).length === 0) {
+        status.className = 'status error';
+        status.textContent = 'At least one campus with valid name, latitude, and longitude is required.';
+        return;
+      }
+
+      // Parse rings
+      const ringsText = document.getElementById('new-rings').value.trim();
+      const ringMiles = ringsText.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+      if (ringMiles.length === 0) { status.className = 'status error'; status.textContent = 'Invalid ring distances.'; return; }
+
+      // Parse years
+      const yearsText = document.getElementById('new-years').value.trim();
+      const years = yearsText.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      if (years.length === 0) { status.className = 'status error'; status.textContent = 'Invalid ACS years.'; return; }
+
+      btn.disabled = true;
+      status.className = 'status';
+      status.textContent = 'Creating market (detecting counties from coordinates)...';
+
+      try {
+        const resp = await fetch('/markets/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            campuses: campuses,
+            ring_miles: ringMiles,
+            years: years,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(err.detail || 'HTTP ' + resp.status);
+        }
+        const result = await resp.json();
+        status.className = 'status success';
+        status.textContent = 'Market "' + result.name + '" created! Counties: ' + result.county_names.join(', ') + '. Switching to Run Report...';
+
+        // Reload markets and switch to run view
+        await loadMarkets();
+        document.getElementById('market').value = result.short_name;
+        onMarketChange();
+        setTimeout(() => showView('run'), 1500);
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ---- Generate report ----
+    async function generateReport() {
+      const btn = document.getElementById('btn');
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+      const year = document.getElementById('year').value;
+      const market = document.getElementById('market').value;
+      const isMaster = year === 'master';
+
+      btn.disabled = true;
+      status.className = 'status';
+      status.textContent = isMaster
+        ? 'Fetching ACS data and building master report...'
+        : 'Fetching ACS ' + year + ' data and building report...';
+      result.style.display = 'none';
+
+      const body = new FormData();
+      body.append('market', market);
+      if (!isMaster) body.append('year', year);
+
+      const endpoint = isMaster ? '/master-report' : '/report';
+      const filename = isMaster
+        ? 'shadow_market_' + market + '_master.xlsx'
+        : 'shadow_market_' + market + '_' + year + '.xlsx';
+
+      try {
+        const resp = await fetch(endpoint, { method: 'POST', body });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(err.detail || 'HTTP ' + resp.status);
+        }
+
+        const summary = resp.headers.get('X-Summary') || '';
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        status.className = 'status success';
+        status.textContent = (isMaster ? 'Master report' : 'Report') + ' downloaded successfully.';
+
+        if (summary) {
+          result.style.display = 'block';
+          result.textContent = summary;
+        }
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Load markets on page load
+    loadMarkets();
+  </script>
+</body>
+</html>

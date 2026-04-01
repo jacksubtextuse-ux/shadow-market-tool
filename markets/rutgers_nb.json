@@ -1,0 +1,15 @@
+{
+  "name": "Rutgers New Brunswick",
+  "short_name": "rutgers_nb",
+  "state_fips": "34",
+  "county_fips": ["34023", "34035"],
+  "county_names": ["Middlesex", "Somerset"],
+  "campuses": {
+    "College Ave": [40.4986, -74.4479],
+    "Busch": [40.5236, -74.4636],
+    "Livingston": [40.5237, -74.4380],
+    "Cook/Douglass": [40.4830, -74.4370]
+  },
+  "ring_miles": [0.5, 1.0, 2.0],
+  "years": [2022, 2023, 2024]
+}

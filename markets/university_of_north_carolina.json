@@ -1,0 +1,27 @@
+{
+  "name": "University of North Carolina",
+  "short_name": "university_of_north_carolina",
+  "state_fips": "37",
+  "county_fips": [
+    "37135"
+  ],
+  "county_names": [
+    "Orange"
+  ],
+  "campuses": {
+    "Main Campus": [
+      35.910166,
+      -79.050133
+    ]
+  },
+  "ring_miles": [
+    0.5,
+    1,
+    2
+  ],
+  "years": [
+    2022,
+    2023,
+    2024
+  ]
+}
