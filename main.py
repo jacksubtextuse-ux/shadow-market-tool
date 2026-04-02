@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from market_config import load_market, list_markets, create_market, CENSUS_API_KEY
 from census import fetch_acs_data, fetch_centroids, merge_data, MergeError
-from analysis import analyze
+from analysis import analyze, nearest_campus, assign_ring
 from report import build_report, build_master_report
 
 logging.basicConfig(level=logging.INFO)
@@ -80,6 +80,54 @@ async def create_market_endpoint(request: Request):
         "county_names": config.county_names,
         "campuses": list(config.campuses.keys()),
     })
+
+
+@app.get("/markets/{short_name}")
+async def get_market_detail(short_name: str):
+    """Return full market config including campus coordinates."""
+    try:
+        config = load_market(short_name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(404, str(exc))
+
+    return JSONResponse(content={
+        "short_name": config.short_name,
+        "name": config.name,
+        "county_names": config.county_names,
+        "campuses": {k: list(v) for k, v in config.campuses.items()},
+        "ring_miles": config.ring_miles,
+        "ring_labels": config.ring_labels,
+        "years": config.years,
+    })
+
+
+def _fetch_map_points(config):
+    """Fetch centroids and compute ring assignments — no ACS data needed."""
+    centroids = fetch_centroids(config.states)
+    points = []
+    for geoid, (lat, lon) in centroids.items():
+        campus_name, dist = nearest_campus(lat, lon, config.campuses)
+        ring = assign_ring(dist, config.ring_miles, config.ring_labels)
+        if ring is not None:
+            points.append({"lat": lat, "lon": lon, "ring": ring, "dist": round(dist, 2)})
+    return points
+
+
+@app.get("/map-data/{short_name}")
+async def get_map_data(short_name: str):
+    """Return block group centroids with ring assignments for map overlay."""
+    try:
+        config = load_market(short_name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(404, str(exc))
+
+    try:
+        points = await asyncio.to_thread(_fetch_map_points, config)
+    except Exception as exc:
+        log.exception("Failed to fetch map data")
+        raise HTTPException(502, str(exc))
+
+    return JSONResponse(content=points)
 
 
 def _run_single_report(config, year: int) -> tuple[dict, bytes]:

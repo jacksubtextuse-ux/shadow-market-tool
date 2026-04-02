@@ -21,7 +21,7 @@
       box-shadow: 0 2px 12px rgba(0,0,0,0.10);
       padding: 40px 48px;
       width: 100%;
-      max-width: 560px;
+      max-width: 680px;
     }
     h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 6px; color: #111; }
     h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 12px; color: #111; }
@@ -126,7 +126,36 @@
 
     .view { display: none; }
     .view.active { display: block; }
+
+    /* Map */
+    #map-container {
+      width: 100%;
+      height: 400px;
+      border-radius: 6px;
+      border: 1px solid #d0d5dd;
+      margin-top: 16px;
+      background: #e5e7eb;
+    }
+    .legend {
+      font-size: 0.8rem;
+      color: #555;
+      margin-top: 10px;
+      line-height: 1.8;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
   </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
 </head>
 <body>
   <div class="card">
@@ -136,6 +165,7 @@
     <div class="view-toggle">
       <span class="active" onclick="showView('run')">Run Report</span>
       <span onclick="showView('setup')">+ New Market</span>
+      <span onclick="showView('map')">Map View</span>
     </div>
 
     <!-- ============ RUN REPORT VIEW ============ -->
@@ -202,6 +232,17 @@
       <button class="btn-green" id="create-btn" onclick="createMarket()">Create Market</button>
       <div class="status" id="setup-status"></div>
     </div>
+    <!-- ============ MAP VIEW ============ -->
+    <div class="view" id="view-map">
+      <div class="field">
+        <label for="map-market">Market</label>
+        <select id="map-market" onchange="onMapMarketChange()">
+          <option value="">Select a market...</option>
+        </select>
+      </div>
+      <div id="map-container"></div>
+      <div class="legend" id="map-legend"></div>
+    </div>
   </div>
 
   <script>
@@ -212,11 +253,11 @@
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       document.querySelectorAll('.view-toggle span').forEach(s => s.classList.remove('active'));
       document.getElementById('view-' + name).classList.add('active');
+      const labels = { run: 'Run Report', setup: '+ New Market', map: 'Map View' };
       document.querySelectorAll('.view-toggle span').forEach(s => {
-        if ((name === 'run' && s.textContent === 'Run Report') ||
-            (name === 'setup' && s.textContent.includes('New Market')))
-          s.classList.add('active');
+        if (s.textContent.trim() === labels[name]) s.classList.add('active');
       });
+      if (name === 'map') initMap();
     }
 
     // ---- Dynamic form rows ----
@@ -247,6 +288,17 @@
         });
         if (marketsData.length > 0) {
           onMarketChange();
+        }
+        // Sync map dropdown if map is already initialized
+        if (leafletMap) {
+          const mapSel = document.getElementById('map-market');
+          mapSel.innerHTML = '<option value="">Select a market...</option>';
+          marketsData.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.short_name;
+            opt.textContent = m.name;
+            mapSel.appendChild(opt);
+          });
         }
       } catch (e) {
         console.error('Failed to load markets', e);
@@ -411,6 +463,124 @@
       } finally {
         btn.disabled = false;
       }
+    }
+
+    // ---- Map ----
+    const RING_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'];
+    let leafletMap = null;
+    let mapLayers = [];
+
+    function initMap() {
+      if (leafletMap) {
+        leafletMap.invalidateSize();
+        return;
+      }
+      leafletMap = L.map('map-container').setView([39.5, -77.0], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+      }).addTo(leafletMap);
+
+      // Populate map market dropdown
+      const sel = document.getElementById('map-market');
+      sel.innerHTML = '<option value="">Select a market...</option>';
+      marketsData.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.short_name;
+        opt.textContent = m.name;
+        sel.appendChild(opt);
+      });
+    }
+
+    function clearMapLayers() {
+      mapLayers.forEach(layer => leafletMap.removeLayer(layer));
+      mapLayers = [];
+    }
+
+    async function onMapMarketChange() {
+      const shortName = document.getElementById('map-market').value;
+      if (!shortName || !leafletMap) return;
+
+      clearMapLayers();
+      document.getElementById('map-legend').innerHTML = 'Loading...';
+
+      const resp = await fetch('/markets/' + shortName);
+      if (!resp.ok) return;
+      const config = await resp.json();
+
+      const bounds = L.latLngBounds();
+
+      for (const [campusName, coords] of Object.entries(config.campuses)) {
+        const [lat, lon] = coords;
+
+        // Campus pin
+        const marker = L.marker([lat, lon])
+          .bindPopup('<strong>' + campusName + '</strong>')
+          .addTo(leafletMap);
+        mapLayers.push(marker);
+        bounds.extend([lat, lon]);
+
+        // Concentric circles — draw outer first so inner renders on top
+        const reversed = [...config.ring_miles].reverse();
+        reversed.forEach((miles, revIdx) => {
+          const idx = config.ring_miles.length - 1 - revIdx;
+          const radiusMeters = miles * 1609.34;
+          const color = RING_COLORS[idx % RING_COLORS.length];
+          const circle = L.circle([lat, lon], {
+            radius: radiusMeters,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.10,
+            weight: 2,
+          }).bindTooltip(config.ring_labels[idx] + ' from ' + campusName)
+           .addTo(leafletMap);
+          mapLayers.push(circle);
+          bounds.extend(circle.getBounds());
+        });
+      }
+
+      leafletMap.fitBounds(bounds, { padding: [30, 30] });
+
+      // Build ring label → color lookup
+      const ringColorMap = {};
+      config.ring_miles.forEach((miles, idx) => {
+        ringColorMap[config.ring_labels[idx]] = RING_COLORS[idx % RING_COLORS.length];
+      });
+
+      // Legend
+      let html = '<strong>Distance rings:</strong> ';
+      config.ring_miles.forEach((miles, idx) => {
+        const color = RING_COLORS[idx % RING_COLORS.length];
+        html += '<span class="legend-dot" style="background:' + color + '"></span>' +
+                config.ring_labels[idx] + '&nbsp;&nbsp;';
+      });
+      html += '<br><strong>Campuses:</strong> ' + Object.keys(config.campuses).join(', ');
+      html += '<br><em>Loading block groups...</em>';
+      document.getElementById('map-legend').innerHTML = html;
+
+      // Fetch block group centroids
+      const bgResp = await fetch('/map-data/' + shortName);
+      if (bgResp.ok) {
+        const points = await bgResp.json();
+        points.forEach(pt => {
+          const color = ringColorMap[pt.ring] || '#888';
+          const dot = L.circleMarker([pt.lat, pt.lon], {
+            radius: 4,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.6,
+            weight: 1,
+          }).bindTooltip(pt.ring + ' (' + pt.dist + ' mi)')
+           .addTo(leafletMap);
+          mapLayers.push(dot);
+        });
+        html = html.replace('<br><em>Loading block groups...</em>',
+          '<br><strong>Block groups:</strong> ' + points.length + ' within range');
+      } else {
+        html = html.replace('<br><em>Loading block groups...</em>',
+          '<br><strong>Block groups:</strong> failed to load');
+      }
+      document.getElementById('map-legend').innerHTML = html;
     }
 
     // Load markets on page load
