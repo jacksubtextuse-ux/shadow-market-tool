@@ -189,9 +189,33 @@
         <select id="year"></select>
       </div>
 
-      <button id="btn" onclick="generateReport()">Generate Report</button>
+      <button id="btn" onclick="generateReport()">Generate Census Report</button>
       <div class="status" id="status"></div>
       <div class="result-box" id="result"></div>
+
+      <hr class="divider" />
+
+      <h2>CoStar Shadow Market Analysis</h2>
+      <div class="field">
+        <label for="costar-file">CoStar CSV File</label>
+        <input type="file" id="costar-file" accept=".csv" />
+      </div>
+      <div class="field">
+        <label for="costar-mode">Analysis Mode</label>
+        <select id="costar-mode">
+          <option value="combined">Combined (CoStar + Census 1-4 units + college-age %)</option>
+          <option value="beds-only">Beds Only (raw CoStar, no Census)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" id="include-graduates" style="width:auto;display:inline;margin-right:6px;" />
+          Include Graduates (22-24)
+          <span class="label-hint">— base is 18-21, toggle adds 22-24 age group</span>
+        </label>
+      </div>
+      <button id="costar-btn" onclick="generateCostar()" class="btn-green">Run CoStar Analysis</button>
+      <div class="status" id="costar-status"></div>
     </div>
 
     <!-- ============ NEW MARKET SETUP VIEW ============ -->
@@ -457,6 +481,64 @@
           result.style.display = 'block';
           result.textContent = summary;
         }
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ---- CoStar report ----
+    async function generateCostar() {
+      const btn = document.getElementById('costar-btn');
+      const status = document.getElementById('costar-status');
+      const fileInput = document.getElementById('costar-file');
+      const mode = document.getElementById('costar-mode').value;
+      const market = document.getElementById('market').value;
+      const year = document.getElementById('year').value;
+
+      if (!fileInput.files.length) {
+        status.className = 'status error';
+        status.textContent = 'Please select a CoStar CSV file.';
+        return;
+      }
+
+      btn.disabled = true;
+      status.className = 'status';
+      status.textContent = mode === 'combined'
+        ? 'Parsing CSV + fetching Census data...'
+        : 'Parsing CSV and running building analysis...';
+
+      const includeGrads = document.getElementById('include-graduates').checked;
+
+      const body = new FormData();
+      body.append('file', fileInput.files[0]);
+      body.append('market', market);
+      body.append('mode', mode);
+      body.append('year', year === 'master' ? '2024' : year);
+      body.append('include_graduates', includeGrads ? 'true' : 'false');
+
+      try {
+        const resp = await fetch('/costar-report', { method: 'POST', body });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(err.detail || 'HTTP ' + resp.status);
+        }
+
+        const summary = resp.headers.get('X-Summary') || '';
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'costar_' + market + '_' + mode.replace('-', '_') + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        status.className = 'status success';
+        status.textContent = 'CoStar report downloaded. ' + summary;
       } catch (e) {
         status.className = 'status error';
         status.textContent = 'Error: ' + e.message;

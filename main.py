@@ -7,13 +7,15 @@ import os
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from market_config import load_market, list_markets, create_market, CENSUS_API_KEY
 from census import fetch_acs_data, fetch_centroids, merge_data, MergeError
 from analysis import analyze, nearest_campus, assign_ring
 from report import build_report, build_master_report
+from costar import parse_costar_bytes, analyze_costar, analyze_costar_combined, _compute_bg_occupancy
+from costar_report import build_costar_beds_report, build_costar_combined_report
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -236,6 +238,86 @@ async def generate_master_report(market: str = Form("rutgers_nb")):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f"attachment; filename=shadow_market_{config.short_name}_master.xlsx",
+            "X-Summary": summary,
+        },
+    )
+
+
+def _run_costar_beds(csv_bytes, config):
+    """Sync: parse CSV, run beds-only analysis, build report."""
+    buildings = parse_costar_bytes(csv_bytes, config.name)
+    if not buildings:
+        raise ValueError(f"No sub-50 unit buildings found matching '{config.name}' in CSV.")
+    result = analyze_costar(buildings, config.campuses, config.ring_miles, config.ring_labels)
+    xlsx = build_costar_beds_report(result, config)
+    return result, xlsx
+
+
+def _run_costar_combined(csv_bytes, config, year, include_graduates):
+    """Sync: parse CSV, fetch Census, run combined analysis, build report."""
+    buildings = parse_costar_bytes(csv_bytes, config.name)
+    if not buildings:
+        raise ValueError(f"No sub-50 unit buildings found matching '{config.name}' in CSV.")
+
+    # Fetch Census data for block-group occupancy + age + 1-4 unit counts
+    acs = fetch_acs_data(year, config.county_fips)
+    centroids = fetch_centroids(config.states)
+    merged = merge_data(acs, centroids)
+
+    # Pre-compute occupancy for each block group
+    for rec in merged:
+        rec["avg_occ_sub50"] = _compute_bg_occupancy(rec)
+
+    result = analyze_costar_combined(
+        buildings, config.campuses, config.ring_miles, config.ring_labels,
+        merged, include_graduates=include_graduates,
+    )
+    xlsx = build_costar_combined_report(result, config, include_graduates)
+    return result, xlsx
+
+
+@app.post("/costar-report")
+async def generate_costar_report(
+    file: UploadFile = File(...),
+    market: str = Form(...),
+    mode: str = Form("combined"),
+    year: int = Form(2024),
+    include_graduates: str = Form("false"),
+):
+    try:
+        config = load_market(market)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+    csv_bytes = await file.read()
+    grads = include_graduates.lower() == "true"
+
+    try:
+        if mode == "beds-only":
+            result, xlsx = await asyncio.to_thread(_run_costar_beds, csv_bytes, config)
+        else:
+            result, xlsx = await asyncio.to_thread(_run_costar_combined, csv_bytes, config, year, grads)
+    except (MergeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        log.exception("CoStar report generation failed")
+        raise HTTPException(502, str(exc))
+
+    total = result["total"]
+    if mode == "beds-only":
+        summary = f"{total['buildings']} buildings, {total['units']} units, {total['beds']} beds within {config.ring_miles[-1]} mi"
+    else:
+        age = "18-24" if grads else "18-21"
+        summary = (f"{total.get('buildings', 0)} CoStar bldgs + {total.get('census_1to4_units', 0)} Census 1-4 units | "
+                   f"Shadow pop ({age}): {total.get('shadow_pop', 0):.0f}")
+
+    grad_label = "with_grads" if grads else "no_grads"
+    filename = f"shadow_market_{config.short_name}_{mode}_{grad_label}.xlsx"
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
             "X-Summary": summary,
         },
     )

@@ -1,0 +1,27 @@
+{
+  "name": "Ohio State",
+  "short_name": "ohio_state",
+  "state_fips": "39",
+  "county_fips": [
+    "39049"
+  ],
+  "county_names": [
+    "Franklin"
+  ],
+  "campuses": {
+    "Main Campus": [
+      39.999711,
+      -83.011096
+    ]
+  },
+  "ring_miles": [
+    0.5,
+    1.0,
+    2.0
+  ],
+  "years": [
+    2022,
+    2023,
+    2024
+  ]
+}

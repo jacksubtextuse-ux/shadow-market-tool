@@ -16,10 +16,14 @@ ACS_BASE = "https://api.census.gov/data/{year}/acs/acs5"
 # B25007: Tenure by Age of Householder (units)
 # B25032: Tenure by Units in Structure (units — for sub-50 ratio)
 # B25033: Total Population by Tenure by Units in Structure (people)
+# B01001: Sex by Age (total population — for tighter college-age %)
 ACS_FIELDS = (
     "?get=B25007_001E,B25007_012E,B25007_013E,B25007_014E,"
-    "B25032_013E,B25032_018E,B25032_019E,B25032_020E,B25032_021E,"
+    "B25032_013E,B25032_014E,B25032_015E,B25032_016E,B25032_017E,"
+    "B25032_018E,B25032_019E,B25032_020E,B25032_021E,"
     "B25033_008E,B25033_009E,B25033_010E,B25033_011E,"
+    "B01001_001E,B01001_006E,B01001_007E,B01001_008E,B01001_009E,B01001_010E,"
+    "B01001_030E,B01001_031E,B01001_032E,B01001_033E,B01001_034E,"
     "NAME"
 )
 
@@ -87,12 +91,16 @@ def _parse_acs_rows(rows: list[list]) -> list[dict]:
 
         # B25032 — unit counts by structure size
         renter_units_b25032 = _safe_int(row[col["B25032_013E"]])
+        renter_1det = _safe_int(row[col["B25032_014E"]])   # 1 unit, detached
+        renter_1att = _safe_int(row[col["B25032_015E"]])   # 1 unit, attached
+        renter_2 = _safe_int(row[col["B25032_016E"]])      # 2 units
+        renter_3to4 = _safe_int(row[col["B25032_017E"]])   # 3-4 units
         renter_5to9 = _safe_int(row[col["B25032_018E"]])
         renter_10to19 = _safe_int(row[col["B25032_019E"]])
         renter_20to49 = _safe_int(row[col["B25032_020E"]])
         renter_50plus = _safe_int(row[col["B25032_021E"]])
-        renter_units_sub50 = max(0, renter_units_b25032 - renter_50plus)  # clamp to 0
-        # 5+ sub-50 units (for allocating 5+ population)
+        renter_units_2to4 = renter_2 + renter_3to4  # excludes single-family
+        renter_units_sub50 = max(0, renter_units_b25032 - renter_50plus)
         fiveplus_sub50 = renter_5to9 + renter_10to19 + renter_20to49
 
         # B25033 — renter population by structure size
@@ -100,6 +108,15 @@ def _parse_acs_rows(rows: list[list]) -> list[dict]:
         renter_pop_1unit = _safe_int(row[col["B25033_009E"]])
         renter_pop_2to4 = _safe_int(row[col["B25033_010E"]])
         renter_pop_5plus = _safe_int(row[col["B25033_011E"]])
+
+        # B01001 — Sex by Age (total population — for tightening 15-24 age window)
+        # _008E/_032E = age 20 only, _009E/_033E = age 21 only, _010E/_034E = age 22-24
+        total_pop = _safe_int(row[col["B01001_001E"]])
+        pop_15_17 = _safe_int(row[col["B01001_006E"]]) + _safe_int(row[col["B01001_030E"]])
+        pop_18_19 = _safe_int(row[col["B01001_007E"]]) + _safe_int(row[col["B01001_031E"]])
+        pop_20_21 = (_safe_int(row[col["B01001_008E"]]) + _safe_int(row[col["B01001_032E"]])
+                   + _safe_int(row[col["B01001_009E"]]) + _safe_int(row[col["B01001_033E"]]))
+        pop_22_24 = _safe_int(row[col["B01001_010E"]]) + _safe_int(row[col["B01001_034E"]])
 
         results.append({
             "geoid": geoid,
@@ -110,6 +127,7 @@ def _parse_acs_rows(rows: list[list]) -> list[dict]:
             "renter_25_34": _safe_int(row[col["B25007_014E"]]),
             # B25032 unit counts
             "renter_units_b25032": renter_units_b25032,
+            "renter_units_2to4": renter_units_2to4,
             "renter_units_50plus": renter_50plus,
             "renter_units_sub50": renter_units_sub50,
             "fiveplus_sub50_units": fiveplus_sub50,
@@ -118,6 +136,12 @@ def _parse_acs_rows(rows: list[list]) -> list[dict]:
             "renter_pop_1unit": renter_pop_1unit,
             "renter_pop_2to4": renter_pop_2to4,
             "renter_pop_5plus": renter_pop_5plus,
+            # B01001 age — for tightening 15-24 window
+            "total_pop": total_pop,
+            "pop_15_17": pop_15_17,
+            "pop_18_19": pop_18_19,
+            "pop_20_21": pop_20_21,
+            "pop_22_24": pop_22_24,
         })
     return results
 
